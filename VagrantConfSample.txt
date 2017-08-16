@@ -1,0 +1,18 @@
+$script = <<SCRIPT
+useradd {{.Login}}
+echo -e "{{.Password}}" | sudo passwd {{.Login}}
+echo "job's done"
+ip a
+SCRIPT
+Vagrant.configure("2") do |config|
+  config.vm.define :{{.Login}} do |id|
+    id.vm.box = "{{.Box}}"
+    id.vm.hostname = "{{.Hostname}}"
+    id.vm.provider "libvirt" do |libvirt|
+    id.vm.provision "shell", inline: $script
+      libvirt.driver = "kvm"
+      libvirt.memory = {{.Memory}}
+      libvirt.graphics_type = "none"
+    end
+  end
+end
