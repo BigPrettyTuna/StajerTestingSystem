@@ -14,7 +14,9 @@ import (
 	"text/template"
 
 	_"github.com/go-sql-driver/mysql"
+	_"github.com/gorilla/sessions"
 	"github.com/jmoiron/sqlx"
+	"github.com/gorilla/sessions"
 )
 
 type server struct {
@@ -47,6 +49,7 @@ type Users struct {
 
 var (
 	configFile = flag.String("Config", "conf.json", "Where to read the Config from")
+	store = sessions.NewCookieStore([]byte(config.SessionSalt))
 )
 
 var config struct {
@@ -55,6 +58,7 @@ var config struct {
 	MysqlHost     string `json:"mysqlHost"`
 	MysqlDb       string `json:"mysqlDb"`
 	PathToConfVm  string `json:"pathToConfVm"`
+	SessionSalt   string `json:"sessionSalt"`
 }
 
 func loadConfig(path string) error {
@@ -88,7 +92,21 @@ func (s *server) getUserFromDbById(id int) Users {
 	return users
 }
 
+func (s *server) getUserFromDbByLogin(login string) Users {
+	users := Users{}
+	if err := s.Db.Get(&users, "SELECT * FROM `users` WHERE login=?", login); err != nil {
+		log.Println(err)
+		return users
+	}
+	return users
+}
+
 func (s *server) usersHandler(w http.ResponseWriter, r *http.Request) {
+	session, _ := store.Get(r, "loginData")
+	if session.Values["login"] == nil || session.Values["permission"] != "admin" {
+		http.Redirect(w, r, "/login/", 302)
+		return
+	}
 	vm := s.getUsersFromDb()
 	testTemplate, _ := template.ParseFiles("templates/test.html")
 	if err := testTemplate.Execute(w, vm); err != nil {
@@ -97,7 +115,56 @@ func (s *server) usersHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *server) loginHandler(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	post := r.PostForm
+	session, _ := store.Get(r, "loginData")
+	login := strings.Join(post["login"], "")
+	password := strings.Join(post["password"], "")
+	state := strings.Join(post["log in"], "")
+	userInfo := s.getUserFromDbByLogin(login)
+	if state == "1"{
+		if password == userInfo.Password {
+			log.Println("zbs")
+			session.Values["login"]= login
+			session.Values["permission"] = userInfo.Permission
+			session.Values["state"] = userInfo.State
+			if userInfo.Permission == "admin"{
+				session.Save(r,w)
+				http.Redirect(w,r, "/suggestions/",302)
+			}else{
+				session.Save(r,w)
+				http.Redirect(w,r, "/user/",302)
+			}
+		}else{
+			log.Println("ne zbs")
+		}
+	}else{
+		log.Println("no entering was found")
+	}
+
+	testTemplate, _ := template.ParseFiles("templates/login.html")
+	if err := testTemplate.Execute(w, ""); err != nil {
+		log.Println(err)
+		return
+	}
+}
+
+func (s *server) logoutHandler(w http.ResponseWriter, r *http.Request) {
+	log.Printf("Loaded %s page from %s", r.URL.Path, r.Header.Get("X-Real-IP"))
+	session, _ := store.Get(r, "loginData")
+	session.Values["login"] = nil
+	session.Values["permission"] = nil
+	session.Save(r, w)
+	http.Redirect(w, r, "/login/", 302)
+}
+
 func (s *server) suggestionsHandler(w http.ResponseWriter, r *http.Request) {
+	session, _ := store.Get(r, "loginData")
+	if session.Values["login"] == nil || session.Values["permission"] != "admin" {
+		http.Redirect(w, r, "/login/", 302)
+		return
+	}
 	r.ParseForm()
 	post := r.PostForm
 	id := strings.Join(post["id_suggestion"], "")
@@ -130,16 +197,16 @@ func (s *server) suggestionsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) userHandler(w http.ResponseWriter, r *http.Request) {
+	session, _ := store.Get(r, "loginData")
+	if session.Values["login"] == nil {
+		http.Redirect(w, r, "/login/", 302)
+		return
+	}
 	r.ParseForm()
 	post := r.PostForm
 	vmcstatus := strings.Join(post["createvm"], "")
-	vmclogin := post["login"]
-	vmcstate := post["state"]
-	log.Println(vmcstatus)
 	if vmcstatus == "1" {
-		log.Println(vmclogin)
-		log.Println(vmcstate)
-		user := Suggestionsstr{"", strings.Join(post["login"], ""), strings.Join(post["state"], ""), "0"}
+		user := Suggestionsstr{"", session.Values["login"].(string), session.Values["state"].(string), "0"}
 		if _, err := s.Db.Exec("INSERT INTO `suggestions` (`login`, `state`, `status`) VALUES (?,?,?)", user.Login, user.State, user.Status); err != nil {
 			log.Println(err)
 			return
@@ -181,5 +248,7 @@ func main() {
 	http.HandleFunc("/users/", s.usersHandler)
 	http.HandleFunc("/suggestions/", s.suggestionsHandler)
 	http.HandleFunc("/user/", s.userHandler)
+	http.HandleFunc("/login/", s.loginHandler)
+	http.HandleFunc("/logout/", s.logoutHandler)
 	http.ListenAndServe(":4006", nil)
 }
