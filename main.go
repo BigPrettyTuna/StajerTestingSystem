@@ -113,20 +113,19 @@ func (s *server) makeVagrantConf(id int) error {
 	if err != nil {
 		return err
 	}
-	generatedVm := Vmvariables{usr.Password + "\\n" + usr.Password + "\\n", "fedora-26vm", "testvm" + strconv.Itoa(id), "2048", usr.Login}
+	generatedVm := Vmvariables{Password: usr.Password + "\\n" + usr.Password + "\\n", Box: "fedora-26vm", Hostname: "testvm" + strconv.Itoa(id), Memory: "2048", Login: usr.Login}
 	template, err := template.ParseFiles("VagrantConfSample.txt")
 	if err != nil {
 		return err
 	}
-	var b bytes.Buffer
-	template.ExecuteTemplate(&b, "VagrantConfSample.txt", generatedVm)
-	var z []byte
-	z = b.Bytes()
+	ile, err := os.Create("ewe")
+	defer ile.Close()
+	template.ExecuteTemplate(ile, "VagrantConfSample.txt", generatedVm)
+
 	if _, err := os.Stat(config.PathToConfVm + string(usr.State) + "/" + usr.Login + "/"); os.IsNotExist(err) {
 		os.Mkdir(config.PathToConfVm+string(usr.State)+"/", 0777)
 		os.Mkdir(config.PathToConfVm+string(usr.State)+"/"+usr.Login+"/", 0777)
 	}
-	ioutil.WriteFile(config.PathToConfVm+string(usr.State)+"/"+usr.Login+"/Vagrantfile", z, 0777)
 	s.executeVagrant(config.PathToConfVm + string(usr.State) + "/" + usr.Login + "/")
 	return err
 }
@@ -137,7 +136,10 @@ func (s *server) makeTestingScripts(login string, file string, script string) (s
 		return "", err
 	}
 	generatedAnswers := Path{config.PathToAnswers + usr.State + "/" + usr.Login + "/", file}
-	template, _ := template.ParseFiles("scripts/" + script)
+	template, err := template.ParseFiles("scripts/" + script)
+	if err != nil {
+		return "", err
+	}
 	var q bytes.Buffer
 	template.ExecuteTemplate(&q, script, generatedAnswers)
 	w := q.Bytes()
@@ -192,43 +194,43 @@ func (s *server) executeTestGenerator(login string) error {
 	if err != nil {
 		return err
 	}
-	s.openFile(path, "temp.txt", login, "0")
+	err = s.openFile(path, "temp.txt", login, "0")
 	if err != nil {
 		return err
 	}
-	s.executeRm(path, "temp.txt")
+	err = s.executeRm(path, "temp.txt")
 	if err != nil {
 		return err
 	}
-	s.makeTestingScripts(login, "key.txt", "iso.sh")
+	_, err = s.makeTestingScripts(login, "key.txt", "iso.sh")
 	if err != nil {
 		return err
 	}
-	s.executeBash(path, "iso.sh")
+	err = s.executeBash(path, "iso.sh")
 	if err != nil {
 		return err
 	}
-	s.openFile(path, "key.txt", login, "1")
+	err = s.openFile(path, "key.txt", login, "1")
 	if err != nil {
 		return err
 	}
-	s.executeRm(path, "key.txt")
+	err = s.executeRm(path, "key.txt")
 	if err != nil {
 		return err
 	}
-	s.executeRm(path, "temp.file")
+	err = s.executeRm(path, "temp.file")
 	if err != nil {
 		return err
 	}
-	s.executeRm(path, "key.tar.gz")
+	err = s.executeRm(path, "key.tar.gz")
 	if err != nil {
 		return err
 	}
-	s.makeTestingScripts(login, "text.txt", "find.sh")
+	_, err = s.makeTestingScripts(login, "text.txt", "find.sh")
 	if err != nil {
 		return err
 	}
-	s.executeBash(path, "find.sh")
+	err = s.executeBash(path, "find.sh")
 	if err != nil {
 		return err
 	}
@@ -309,52 +311,48 @@ func (s *server) answersHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
-
-func (s *server) loginHandler(w http.ResponseWriter, r *http.Request) {
-	/*
+func (s *server) loginPageHandler(w http.ResponseWriter, r *http.Request) {
+	log.Printf("Loaded %s page from %s", r.URL.Path, r.Header.Get("X-Real-IP"))
 	session, _ := store.Get(r, "loginData")
-	if session.Values["login"] == nil {
-		http.Redirect(w, r, "/login/", 302)
-		return
-	}
-	user, err := s.getUserFromDbByLogin(session.Values["login"].(string))
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	if user.Permission != "admin" {
-		http.Redirect(w, r, "/login/", 302)
-		return
-	}
-	 */
-	session, _ := store.Get(r, "loginData")
-	login := r.PostForm.Get("login")
-	password := r.PostForm.Get(session.Values["password"].(string))
-	state := r.PostForm.Get(session.Values["log in"].(string))
-	userInfo, err := s.getUserFromDbByLogin(login)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	if state == "1" {
-		if password == userInfo.Password {
-			session.Values["login"] = login
-			session.Save(r, w)
-			if userInfo.Permission == "admin" {
-				http.Redirect(w, r, "/suggestions/", 302)
-			} else {
-				http.Redirect(w, r, "/user/", 302)
-			}
+	userInfo, err := s.getUserFromDbByLogin(r.PostForm.Get("login"))
+	if session.Values["login"] != nil {
+		if userInfo.Permission =="admin"{
+			http.Redirect(w, r, "/suggestions/", 302)
+			return
+		}else{
+			http.Redirect(w, r, "/user/", 302)
 			return
 		}
 	}
-	testTemplate, err := template.ParseFiles("templates/login.html")
+	template, err := template.ParseFiles("templates/login.html")
 	if err != nil {
 		log.Println(err)
 		return
 	}
-	if err := testTemplate.Execute(w, ""); err != nil {
+	if err = template.Execute(w, nil); err != nil {
 		log.Println(err)
+		return
+	}
+}
+
+func (s *server) loginHandler(w http.ResponseWriter, r *http.Request) {
+	log.Printf("Loaded %s page from %s", r.URL.Path, r.Header.Get("X-Real-IP"))
+	session, _ := store.Get(r, "loginData")
+	r.ParseForm()
+	userInfo, err := s.getUserFromDbByLogin(r.PostForm.Get("login"))
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	//log.Println(userInfo.Password, " ",session.Values["password"])
+	if userInfo.Password == r.PostForm.Get("password") {
+		session.Values["login"] = userInfo.Login
+		session.Save(r, w)
+		if userInfo.Permission == "admin" {
+			http.Redirect(w, r, "/suggestions/", 302)
+		} else {
+			http.Redirect(w, r, "/user/", 302)
+		}
 		return
 	}
 }
@@ -386,22 +384,22 @@ func (s *server) suggestionsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	r.ParseForm()
 	solution := r.PostForm.Get(session.Values["solution"].(string))
-	id_int, err := strconv.Atoi(r.PostForm.Get("id"))
+	id, err := strconv.Atoi(r.PostForm.Get("id"))
 	if err != nil {
 		log.Println(err)
 		return
 	}
-	userOfSuggestion, err := s.getUserFromDbById(id_int)
+	userOfSuggestion, err := s.getUserFromDbById(id)
 	if err != nil {
 		log.Println(err)
 		return
 	}
 	if solution == "1" {
-		if _, err := s.Db.Exec("UPDATE `suggestions` SET status = ? WHERE id = ?", solution, id_int); err != nil {
+		if _, err := s.Db.Exec("UPDATE `suggestions` SET status = ? WHERE id = ?", solution, id); err != nil {
 			log.Println(err)
 			return
 		}
-		err = s.makeVagrantConf(id_int)
+		err = s.makeVagrantConf(id)
 		if err != nil {
 			log.Println(err)
 			return
@@ -413,7 +411,7 @@ func (s *server) suggestionsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		log.Println("Job's done!")
 	} else if solution == "2" {
-		if _, err := s.Db.Exec("UPDATE `suggestions` SET status = ? WHERE id = ?", solution, id_int); err != nil {
+		if _, err := s.Db.Exec("UPDATE `suggestions` SET status = ? WHERE id = ?", solution, id); err != nil {
 			log.Println(err)
 			return
 		}
@@ -516,7 +514,8 @@ func main() {
 	http.HandleFunc("/users/", s.usersHandler)
 	http.HandleFunc("/suggestions/", s.suggestionsHandler)
 	http.HandleFunc("/user/", s.userHandler)
-	http.HandleFunc("/login/", s.loginHandler)
+	http.HandleFunc("/login/", s.loginPageHandler)
+	http.HandleFunc("/login/check/", s.loginHandler)
 	http.HandleFunc("/logout/", s.logoutHandler)
 	http.HandleFunc("/answers/", s.answersHandler)
 	http.HandleFunc("/submit/", s.submitHandler)
