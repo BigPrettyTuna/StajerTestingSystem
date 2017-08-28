@@ -237,6 +237,7 @@ func (s *server) executeTestGenerator(login string) error {
 		return err
 	}
 	//s.openFile(path, "key.txt", login, "1")
+	return err
 }
 
 func (s *server) getUserFromDbByLogin(login string) (Users, error) {
@@ -412,7 +413,7 @@ func (s *server) suggestionsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		log.Println("Job's done!")
 	} else if solution == "2" {
-		if _, err := s.Db.Exec("UPDATE `suggestions` SET status = ? WHERE id = ?", solution, id); err != nil {
+		if _, err := s.Db.Exec("UPDATE `suggestions` SET status = ? WHERE id = ?", solution, id_int); err != nil {
 			log.Println(err)
 			return
 		}
