@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	_"database/sql"
 	"encoding/json"
 	"flag"
@@ -118,14 +117,14 @@ func (s *server) makeVagrantConf(id int) error {
 	if err != nil {
 		return err
 	}
-	ile, err := os.Create("ewe")
-	defer ile.Close()
-	template.ExecuteTemplate(ile, "VagrantConfSample.txt", generatedVm)
-
 	if _, err := os.Stat(config.PathToConfVm + string(usr.State) + "/" + usr.Login + "/"); os.IsNotExist(err) {
 		os.Mkdir(config.PathToConfVm+string(usr.State)+"/", 0777)
 		os.Mkdir(config.PathToConfVm+string(usr.State)+"/"+usr.Login+"/", 0777)
 	}
+	file, err := os.Create(config.PathToConfVm + string(usr.State) + "/" + usr.Login + "/Vagrantfile")
+	log.Println(config.PathToConfVm + string(usr.State) + "/" + usr.Login + "/Vagrantfile")
+	defer file.Close()
+	template.ExecuteTemplate(file, "VagrantConfSample.txt", generatedVm)
 	s.executeVagrant(config.PathToConfVm + string(usr.State) + "/" + usr.Login + "/")
 	return err
 }
@@ -140,14 +139,15 @@ func (s *server) makeTestingScripts(login string, file string, script string) (s
 	if err != nil {
 		return "", err
 	}
-	var q bytes.Buffer
-	template.ExecuteTemplate(&q, script, generatedAnswers)
-	w := q.Bytes()
+	//
+	log.Println(config.PathToAnswers + string(usr.State) + "/" + usr.Login + "/" + script)
 	if _, err := os.Stat(config.PathToAnswers + string(usr.State) + "/" + usr.Login + "/"); os.IsNotExist(err) {
 		os.Mkdir(config.PathToAnswers+string(usr.State)+"/", 0777)
 		os.Mkdir(config.PathToAnswers+string(usr.State)+"/"+usr.Login+"/", 0777)
 	}
-	ioutil.WriteFile(config.PathToAnswers+string(usr.State)+"/"+usr.Login+"/"+script, w, 0777)
+	fileScript, err := os.Create(config.PathToAnswers + string(usr.State) + "/" + usr.Login + "/" + script)
+	defer fileScript.Close()
+	template.ExecuteTemplate(fileScript, script, generatedAnswers)
 	return config.PathToAnswers + string(usr.State) + "/" + usr.Login + "/", err
 }
 
@@ -316,10 +316,10 @@ func (s *server) loginPageHandler(w http.ResponseWriter, r *http.Request) {
 	session, _ := store.Get(r, "loginData")
 	userInfo, err := s.getUserFromDbByLogin(r.PostForm.Get("login"))
 	if session.Values["login"] != nil {
-		if userInfo.Permission =="admin"{
+		if userInfo.Permission == "admin" {
 			http.Redirect(w, r, "/suggestions/", 302)
 			return
-		}else{
+		} else {
 			http.Redirect(w, r, "/user/", 302)
 			return
 		}
@@ -344,9 +344,10 @@ func (s *server) loginHandler(w http.ResponseWriter, r *http.Request) {
 		log.Println(err)
 		return
 	}
-	//log.Println(userInfo.Password, " ",session.Values["password"])
+	log.Println(userInfo.Permission)
 	if userInfo.Password == r.PostForm.Get("password") {
 		session.Values["login"] = userInfo.Login
+		log.Println(session.Values["login"])
 		session.Save(r, w)
 		if userInfo.Permission == "admin" {
 			http.Redirect(w, r, "/suggestions/", 302)
@@ -383,27 +384,30 @@ func (s *server) suggestionsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	r.ParseForm()
-	solution := r.PostForm.Get(session.Values["solution"].(string))
-	id, err := strconv.Atoi(r.PostForm.Get("id"))
+	solution := r.PostForm.Get("solution")
+	id, err := strconv.Atoi(r.PostForm.Get("id_suggestion"))
+	log.Println(r.PostForm.Get("id_suggestion"))
+	log.Println(id)
+	log.Println(solution)
 	if err != nil {
 		log.Println(err)
-		return
 	}
 	userOfSuggestion, err := s.getUserFromDbById(id)
 	if err != nil {
 		log.Println(err)
-		return
 	}
 	if solution == "1" {
 		if _, err := s.Db.Exec("UPDATE `suggestions` SET status = ? WHERE id = ?", solution, id); err != nil {
 			log.Println(err)
 			return
 		}
+		log.Println("vagrantconf")
 		err = s.makeVagrantConf(id)
 		if err != nil {
 			log.Println(err)
 			return
 		}
+		log.Println("executeTestGenerator")
 		err = s.executeTestGenerator(userOfSuggestion.Login)
 		if err != nil {
 			log.Println(err)
@@ -434,12 +438,15 @@ func (s *server) suggestionsHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) userHandler(w http.ResponseWriter, r *http.Request) {
 	session, _ := store.Get(r, "loginData")
+	r.ParseForm()
 	if session.Values["login"] == nil {
 		http.Redirect(w, r, "/login/", 302)
 		return
 	}
-	vmcstatus := session.Values["createvm"].(string)
+	vmcstatus := r.PostForm.Get("createvm")
+	log.Println(vmcstatus)
 	user, err := s.getUserFromDbByLogin(session.Values["login"].(string))
+	log.Println(session.Values["login"])
 	if err != nil {
 		log.Println(err)
 		return
@@ -472,9 +479,10 @@ func (s *server) submitHandler(w http.ResponseWriter, r *http.Request) {
 		log.Println(err)
 		return
 	}
-	submitStatus := session.Values["submit"]
+	r.ParseForm()
+	submitStatus := r.PostForm.Get("submit")
 	if submitStatus == "1" {
-		answer := session.Values["answer"]
+		answer := r.PostForm.Get("answer")
 		rightAnswer, err := s.getAnswerFromDbByLogin(session.Values["login"].(string), user.QuestionNumber)
 		if err != nil {
 			log.Println(err)
