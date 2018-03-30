@@ -1,7 +1,7 @@
 package main
 
 import (
-	_"database/sql"
+	_ "database/sql"
 	"encoding/json"
 	"flag"
 	"io/ioutil"
@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"text/template"
 
-	_"github.com/go-sql-driver/mysql"
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 	"github.com/gorilla/sessions"
 )
@@ -21,7 +21,7 @@ type server struct {
 	Db *sqlx.DB
 }
 
-type Vmvariables struct {
+type VmVariables struct {
 	Password string `db:"password"`
 	Box      string `db:"box"`
 	Hostname string `db:"hostname"`
@@ -29,7 +29,7 @@ type Vmvariables struct {
 	Login    string `db:"login"`
 }
 
-type Suggestionsstr struct {
+type SuggestionsStr struct {
 	Id     string `db:"id"`
 	Login  string `db:"login"`
 	State  string `db:"state"`
@@ -43,7 +43,7 @@ type Users struct {
 	FirstName      string `db:"firstName"`
 	LastName       string `db:"lastName"`
 	State          string `db:"state"`
-	QuestionNumber int `db:"questionNumber"`
+	QuestionNumber int    `db:"questionNumber"`
 }
 
 type Answer struct {
@@ -112,7 +112,7 @@ func (s *server) makeVagrantConf(id int) error {
 	if err != nil {
 		return err
 	}
-	generatedVm := Vmvariables{Password: usr.Password + "\\n" + usr.Password + "\\n", Box: "fedora-26vm", Hostname: "testvm" + strconv.Itoa(id), Memory: "2048", Login: usr.Login}
+	generatedVm := VmVariables{Password: usr.Password + "\\n" + usr.Password + "\\n", Box: "fedora-26vm", Hostname: "testvm" + strconv.Itoa(id), Memory: "2048", Login: usr.Login}
 	template, err := template.ParseFiles("VagrantConfSample.txt")
 	if err != nil {
 		return err
@@ -251,7 +251,7 @@ func (s *server) getUserFromDbByLogin(login string) (Users, error) {
 func (s *server) usersHandler(w http.ResponseWriter, r *http.Request) {
 	session, _ := store.Get(r, "loginData")
 	if session.Values["login"] == nil {
-		http.Redirect(w, r, "/login/", 302)
+		http.Redirect(w, r, "/", 302)
 		return
 	}
 	user, err := s.getUserFromDbByLogin(session.Values["login"].(string))
@@ -283,7 +283,7 @@ func (s *server) usersHandler(w http.ResponseWriter, r *http.Request) {
 func (s *server) answersHandler(w http.ResponseWriter, r *http.Request) {
 	session, _ := store.Get(r, "loginData")
 	if session.Values["login"] == nil {
-		http.Redirect(w, r, "/login/", 302)
+		http.Redirect(w, r, "/", 302)
 		return
 	}
 	user, err := s.getUserFromDbByLogin(session.Values["login"].(string))
@@ -311,11 +311,18 @@ func (s *server) answersHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
-func (s *server) loginPageHandler(w http.ResponseWriter, r *http.Request) {
+
+func (s *server) indexHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Loaded %s page from %s", r.URL.Path, r.Header.Get("X-Real-IP"))
 	session, _ := store.Get(r, "loginData")
+	r.ParseForm()
 	userInfo, err := s.getUserFromDbByLogin(r.PostForm.Get("login"))
-	if session.Values["login"] != nil {
+	if err != nil {
+		log.Println(err)
+		//TODO
+	}
+	log.Println(r.URL.Path)
+	if session.Values["login"] != nil && r.URL.Path != "/logout/" {
 		if userInfo.Permission == "admin" {
 			http.Redirect(w, r, "/suggestions/", 302)
 			return
@@ -323,6 +330,25 @@ func (s *server) loginPageHandler(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/user/", 302)
 			return
 		}
+	}
+	switch r.URL.Path {
+	case "/login":
+		if session.Values["login"] != nil || r.PostForm.Get("password") == "" {
+			http.Redirect(w, r, "/", 302)
+			return
+		}
+		if userInfo.Password == r.PostForm.Get("password") {
+			session.Values["login"] = userInfo.Login
+			session.Save(r, w)
+			http.Redirect(w, r, "/", 302)
+			return
+		}
+
+	case "/logout/":
+		session.Values["login"] = nil
+		session.Save(r, w)
+		http.Redirect(w, r, "/", 302)
+		return
 	}
 	template, err := template.ParseFiles("templates/login.html")
 	if err != nil {
@@ -335,43 +361,10 @@ func (s *server) loginPageHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *server) loginHandler(w http.ResponseWriter, r *http.Request) {
-	log.Printf("Loaded %s page from %s", r.URL.Path, r.Header.Get("X-Real-IP"))
-	session, _ := store.Get(r, "loginData")
-	r.ParseForm()
-	userInfo, err := s.getUserFromDbByLogin(r.PostForm.Get("login"))
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	log.Println(userInfo.Permission)
-	if userInfo.Password == r.PostForm.Get("password") {
-		session.Values["login"] = userInfo.Login
-		log.Println(session.Values["login"])
-		session.Save(r, w)
-		if userInfo.Permission == "admin" {
-			http.Redirect(w, r, "/suggestions/", 302)
-		} else {
-			http.Redirect(w, r, "/user/", 302)
-		}
-		return
-	}
-}
-
-func (s *server) logoutHandler(w http.ResponseWriter, r *http.Request) {
-	log.Printf("Loaded %s page from %s", r.URL.Path, r.Header.Get("X-Real-IP"))
-	session, _ := store.Get(r, "loginData")
-	session.Values["login"] = nil
-	session.Save(r, w)
-	http.Redirect(w, r, "/login/", 302)
-	log.Println("huy")
-	return
-}
-
 func (s *server) suggestionsHandler(w http.ResponseWriter, r *http.Request) {
 	session, _ := store.Get(r, "loginData")
 	if session.Values["login"] == nil {
-		http.Redirect(w, r, "/login/", 302)
+		http.Redirect(w, r, "/", 302)
 		return
 	}
 	user, err := s.getUserFromDbByLogin(session.Values["login"].(string))
@@ -420,7 +413,7 @@ func (s *server) suggestionsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	var suggestionDb []Suggestionsstr
+	var suggestionDb []SuggestionsStr
 	if err := s.Db.Select(&suggestionDb, "SELECT * FROM `suggestions` "); err != nil {
 		log.Println(err)
 		return
@@ -439,8 +432,9 @@ func (s *server) suggestionsHandler(w http.ResponseWriter, r *http.Request) {
 func (s *server) userHandler(w http.ResponseWriter, r *http.Request) {
 	session, _ := store.Get(r, "loginData")
 	r.ParseForm()
+	log.Println(session.Values["login"])
 	if session.Values["login"] == nil {
-		http.Redirect(w, r, "/login/", 302)
+		http.Redirect(w, r, "/", 302)
 		return
 	}
 	vmcstatus := r.PostForm.Get("createvm")
@@ -471,7 +465,7 @@ func (s *server) userHandler(w http.ResponseWriter, r *http.Request) {
 func (s *server) submitHandler(w http.ResponseWriter, r *http.Request) {
 	session, _ := store.Get(r, "loginData")
 	if session.Values["login"] == nil {
-		http.Redirect(w, r, "/login/", 302)
+		http.Redirect(w, r, "/", 302)
 		return
 	}
 	user, err := s.getUserFromDbByLogin(session.Values["login"].(string))
@@ -522,11 +516,9 @@ func main() {
 	http.HandleFunc("/users/", s.usersHandler)
 	http.HandleFunc("/suggestions/", s.suggestionsHandler)
 	http.HandleFunc("/user/", s.userHandler)
-	http.HandleFunc("/login/", s.loginPageHandler)
-	http.HandleFunc("/login/check/", s.loginHandler)
-	http.HandleFunc("/logout/", s.logoutHandler)
 	http.HandleFunc("/answers/", s.answersHandler)
 	http.HandleFunc("/submit/", s.submitHandler)
+	http.HandleFunc("/", s.indexHandler)
 	err = http.ListenAndServe(":4006", nil)
 	if err != nil {
 		panic(err)
