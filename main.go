@@ -1,7 +1,6 @@
 package main
 
 import (
-	_ "database/sql"
 	"encoding/json"
 	"flag"
 	"io/ioutil"
