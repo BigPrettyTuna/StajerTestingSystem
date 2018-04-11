@@ -1,0 +1,39 @@
+{% code type Answer struct {
+Id             string `db:"id"`
+Login          string `db:"login"`
+Answer         string `db:"answer"`
+QuestionNumber string `db:"questionNumber"`
+State          string `db:"state"`
+}
+%}
+
+
+{% func AnswerPage(answer []Answer) %}
+{%= Head("answers") %}
+<form method="post">
+    {%v answer %}
+    <a href="/login">login</a>
+    <a href="/logout">logout</a>
+    <a href="/suggestions">suggestions</a>
+    <a href="/user">user</a>
+    <a href="/users">users</a>
+    <a href="/answers">answers</a>
+    <a href="/submit">submit</a>
+</form>
+{%= Footer() %}
+{% endfunc %}
+
+{% func UsersPage(users []Users) %}
+{%= Head("answers") %}
+<form method="post">
+    {%v users %}
+    <a href="/login">login</a>
+    <a href="/logout">logout</a>
+    <a href="/suggestions">suggestions</a>
+    <a href="/user">user</a>
+    <a href="/users">users</a>
+    <a href="/answers">answers</a>
+    <a href="/submit">submit</a>
+</form>
+{%= Footer() %}
+{% endfunc %}

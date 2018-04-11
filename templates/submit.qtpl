@@ -1,13 +1,18 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
+{% code type Users struct {
+Login          string `db:"login"`
+Password       string `db:"password"`
+Permission     string `db:"permission"`
+FirstName      string `db:"firstName"`
+LastName       string `db:"lastName"`
+State          string `db:"state"`
+QuestionNumber int    `db:"questionNumber"`
+}
+%}
+{% func SubmitPage(user Users) %}
+{%= Head("submit") %}
 <form method="post">
     <p>questionNumber</p>
-    {{.QuestionNumber}}
+    {%v user.QuestionNumber %}
     <p>answer</p>
     <input type="text" name="answer">
     <input type="hidden" name="submit" value="1">
@@ -20,5 +25,5 @@
     <a href="/answers">answers</a>
     <a href="/submit">submit</a>
 </form>
-</body>
-</html>
+{%= Footer() %}
+{% endfunc %}

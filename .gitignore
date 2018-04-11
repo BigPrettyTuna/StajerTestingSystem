@@ -12,3 +12,5 @@
 gradlew
 *.jar
 conf.json
+*.qtpl.go
+.idea/*

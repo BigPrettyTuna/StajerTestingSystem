@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -11,14 +12,20 @@ import (
 	"strconv"
 	"text/template"
 
+	"github.com/BigPrettyTuna/testing_system/templates"
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/jmoiron/sqlx"
 	"github.com/gorilla/sessions"
+	"github.com/jmoiron/sqlx"
 )
 
 type server struct {
 	Db *sqlx.DB
 }
+type (
+	Users = templates.Users
+	SuggestionsStr = templates.SuggestionsStr
+	Answer = templates.Answer
+)
 
 type VmVariables struct {
 	Password string `db:"password"`
@@ -26,31 +33,6 @@ type VmVariables struct {
 	Hostname string `db:"hostname"`
 	Memory   string `db:"memory"`
 	Login    string `db:"login"`
-}
-
-type SuggestionsStr struct {
-	Id     string `db:"id"`
-	Login  string `db:"login"`
-	State  string `db:"state"`
-	Status string `db:"status"`
-}
-
-type Users struct {
-	Login          string `db:"login"`
-	Password       string `db:"password"`
-	Permission     string `db:"permission"`
-	FirstName      string `db:"firstName"`
-	LastName       string `db:"lastName"`
-	State          string `db:"state"`
-	QuestionNumber int    `db:"questionNumber"`
-}
-
-type Answer struct {
-	Id             string `db:"id"`
-	Login          string `db:"login"`
-	Answer         string `db:"answer"`
-	QuestionNumber string `db:"questionNumber"`
-	State          string `db:"state"`
 }
 
 type Path struct {
@@ -138,7 +120,7 @@ func (s *server) makeTestingScripts(login string, file string, script string) (s
 	if err != nil {
 		return "", err
 	}
-	//
+	//TODO
 	log.Println(config.PathToAnswers + string(usr.State) + "/" + usr.Login + "/" + script)
 	if _, err := os.Stat(config.PathToAnswers + string(usr.State) + "/" + usr.Login + "/"); os.IsNotExist(err) {
 		os.Mkdir(config.PathToAnswers+string(usr.State)+"/", 0777)
@@ -237,7 +219,6 @@ func (s *server) executeTestGenerator(login string) error {
 		log.Println(err)
 		return err
 	}
-	//s.openFile(path, "key.txt", login, "1")
 	return err
 }
 
@@ -268,15 +249,7 @@ func (s *server) usersHandler(w http.ResponseWriter, r *http.Request) {
 		log.Println(err)
 		return
 	}
-	testTemplate, err := template.ParseFiles("templates/test.html")
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	if err := testTemplate.Execute(w, vm); err != nil {
-		log.Println(err)
-		return
-	}
+	fmt.Fprint(w, templates.UsersPage(vm))
 }
 
 func (s *server) answersHandler(w http.ResponseWriter, r *http.Request) {
@@ -300,15 +273,7 @@ func (s *server) answersHandler(w http.ResponseWriter, r *http.Request) {
 		log.Println(err)
 		return
 	}
-	testTemplate, err := template.ParseFiles("templates/test.html")
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	if err := testTemplate.Execute(w, vm); err != nil {
-		log.Println(err)
-		return
-	}
+	fmt.Fprint(w, templates.AnswerPage(vm))
 }
 
 func (s *server) indexHandler(w http.ResponseWriter, r *http.Request) {
@@ -321,7 +286,7 @@ func (s *server) indexHandler(w http.ResponseWriter, r *http.Request) {
 		//TODO
 	}
 	log.Println(r.URL.Path)
-	if session.Values["login"] != nil && r.URL.Path != "/logout/" {
+	if session.Values["login"] != nil && r.URL.Path != "/logout" {
 		if userInfo.Permission == "admin" {
 			http.Redirect(w, r, "/suggestions/", 302)
 			return
@@ -343,21 +308,13 @@ func (s *server) indexHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-	case "/logout/":
+	case "/logout":
 		session.Values["login"] = nil
 		session.Save(r, w)
 		http.Redirect(w, r, "/", 302)
 		return
 	}
-	template, err := template.ParseFiles("templates/login.html")
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	if err = template.Execute(w, nil); err != nil {
-		log.Println(err)
-		return
-	}
+	fmt.Fprint(w, templates.IndexPage())
 }
 
 func (s *server) suggestionsHandler(w http.ResponseWriter, r *http.Request) {
@@ -417,15 +374,7 @@ func (s *server) suggestionsHandler(w http.ResponseWriter, r *http.Request) {
 		log.Println(err)
 		return
 	}
-	testTemplate, err := template.ParseFiles("templates/suggestions.html")
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	if err := testTemplate.Execute(w, suggestionDb); err != nil {
-		log.Println(err)
-		return
-	}
+	fmt.Fprint(w, templates.SuggestionsPage(suggestionDb))
 }
 
 func (s *server) userHandler(w http.ResponseWriter, r *http.Request) {
@@ -450,15 +399,7 @@ func (s *server) userHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	testTemplate, err := template.ParseFiles("templates/user.html")
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	if err := testTemplate.Execute(w, user); err != nil {
-		log.Println(err)
-		return
-	}
+	fmt.Fprint(w, templates.UserPage(user))
 }
 
 func (s *server) submitHandler(w http.ResponseWriter, r *http.Request) {
@@ -492,15 +433,7 @@ func (s *server) submitHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	submitTemplate, err := template.ParseFiles("templates/submit.html")
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	if err := submitTemplate.Execute(w, user); err != nil {
-		log.Println(err)
-		return
-	}
+	fmt.Fprint(w, templates.SubmitPage(user))
 }
 
 func main() {

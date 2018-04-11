@@ -1,11 +1,13 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
-{{.}}
+{% code type SuggestionsStr struct {
+Id     string `db:"id"`
+Login  string `db:"login"`
+State  string `db:"state"`
+Status string `db:"status"`
+}
+%}
+{% func SuggestionsPage(suggestion []SuggestionsStr) %}
+{%= Head("suggestion") %}
+{%v suggestion %}
 <form method="post">
     <p>id</p>
     <input type="text" name="id_suggestion">
@@ -25,5 +27,5 @@
 <a href="/users">users</a>
 <a href="/answers">answers</a>
 <a href="/submit">submit</a>
-</body>
-</html>
+{%= Footer() %}
+{% endfunc %}
